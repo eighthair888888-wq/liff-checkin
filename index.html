@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>現場真實 GPS 報到系統</title>
+  <style>
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+      background: #f4f6f9; 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      min-height: 100vh; 
+      margin: 0; 
+      padding: 20px; 
+      box-sizing: border-box; 
+    }
+    .card { 
+      background: white; 
+      padding: 30px 25px; 
+      border-radius: 16px; 
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
+      width: 100%; 
+      max-width: 380px; 
+      text-align: center; 
+    }
+    h2 { margin-top: 0; color: #333; font-size: 22px; }
+    input { 
+      width: 100%; 
+      padding: 12px; 
+      margin: 15px 0 20px 0; 
+      border: 1px solid #ccc; 
+      border-radius: 8px; 
+      font-size: 16px; 
+      box-sizing: border-box; 
+      outline: none;
+    }
+    input:focus { border-color: #00b900; }
+    button { 
+      width: 100%; 
+      background: #00b900; 
+      color: white; 
+      border: none; 
+      padding: 14px; 
+      font-size: 18px; 
+      font-weight: bold; 
+      border-radius: 8px; 
+      cursor: pointer; 
+      transition: background 0.2s;
+    }
+    button:active { background: #009900; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    #status { 
+      margin-top: 20px; 
+      font-size: 16px; 
+      font-weight: bold; 
+      line-height: 1.5; 
+      word-break: break-all; 
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>📍 現場真實 GPS 報到</h2>
+    <input type="text" id="userName" placeholder="請輸入您的姓名" required />
+    <button id="btn" onclick="startCheckIn()">取得真實 GPS 並報到</button>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    // ⚠️ 請確認此處已填入您最新的 GAS 部署 URL (結尾必須為 /exec)
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbwjMTy8YuZEQtgIsRZSyYfr2cVnm4vFDxjVR1AiI3H7m2gXJteXQLW1qOOrSNeP5pBUdQ/exec";
+
+    function startCheckIn() {
+      const userName = document.getElementById("userName").value.trim();
+      const statusDiv = document.getElementById("status");
+      const btn = document.getElementById("btn");
+
+      if (!userName) { 
+        alert("請輸入姓名！"); 
+        return; 
+      }
+      
+      if (!navigator.geolocation) { 
+        statusDiv.innerHTML = "<span style='color:red;'>手機裝置不支援 GPS 定位功能！</span>"; 
+        return; 
+      }
+
+      btn.disabled = true;
+      statusDiv.style.color = "#333";
+      statusDiv.innerHTML = "⏳ 正在獲取手機高精度 GPS 定位...";
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          statusDiv.innerHTML = "📡 定位成功！正在寫入報到紀錄...";
+          
+          const sendUrl = `${GAS_URL}?userName=${encodeURIComponent(userName)}&latitude=${pos.coords.latitude}&longitude=${pos.coords.longitude}`;
+
+          // 使用 no-cors 模式發送，防止瀏覽器跨網域限制 (CORS)
+          fetch(sendUrl, { method: 'POST', mode: 'no-cors' })
+          .then(() => {
+            statusDiv.innerHTML = "<span style='color:green;'>✅ 報到資料已成功發送！</span><br>感謝您的報到。";
+          })
+          .catch((err) => { 
+            statusDiv.innerHTML = "<span style='color:red;'>❌ 傳送失敗，請檢查網路連線。</span>"; 
+          })
+          .finally(() => { 
+            btn.disabled = false; 
+          });
+        },
+        (err) => {
+          btn.disabled = false;
+          statusDiv.innerHTML = "<span style='color:red;'>❌ 取得位置失敗，請確認已開啟手機 GPS 定位功能與瀏覽器定位存取權限。</span>";
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    }
+  </script>
+</body>
+</html>
