@@ -70,7 +70,6 @@
   </div>
 
   <script>
-    // 已更新為您最新的 Google Apps Script 部署網址
     const GAS_URL = "https://script.google.com/macros/s/AKfycbyhebFKQExHnfWkhCDoR5AG3jBxrEQWRQaOTnJ4aqb_2L85eJrXnYFBFYn_Y5Z2WLzG/exec";
 
     function startCheckIn() {
@@ -96,12 +95,19 @@
         (pos) => {
           statusDiv.innerHTML = "📡 定位成功！正在寫入報到紀錄...";
           
-          const sendUrl = `${GAS_URL}?userName=${encodeURIComponent(userName)}&latitude=${pos.coords.latitude}&longitude=${pos.coords.longitude}`;
+          const formData = new URLSearchParams();
+          formData.append("userName", userName);
+          formData.append("latitude", pos.coords.latitude);
+          formData.append("longitude", pos.coords.longitude);
 
-          // 使用 no-cors 模式發送，防止瀏覽器跨網域限制 (CORS)
-          fetch(sendUrl, { method: 'POST', mode: 'no-cors' })
+          fetch(GAS_URL, {
+            method: "POST",
+            mode: "no-cors",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: formData.toString()
+          })
           .then(() => {
-            statusDiv.innerHTML = "<span style='color:green;'>✅ 報到資料已成功發送！</span><br>感謝您的報到。";
+            statusDiv.innerHTML = "<span style='color:green;'>✅ 報到資料已成功發送！</span><br>請確認試算表紀錄。";
           })
           .catch((err) => { 
             statusDiv.innerHTML = "<span style='color:red;'>❌ 傳送失敗，請檢查網路連線。</span>"; 
@@ -112,7 +118,7 @@
         },
         (err) => {
           btn.disabled = false;
-          statusDiv.innerHTML = "<span style='color:red;'>❌ 取得位置失敗，請確認已開啟手機 GPS 定位功能與瀏覽器定位存取權限。</span>";
+          statusDiv.innerHTML = "<span style='color:red;'>❌ 取得位置失敗，請開啟 GPS 定位與瀏覽器定位權限。</span>";
         },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
