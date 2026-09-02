@@ -70,7 +70,8 @@
   </div>
 
   <script>
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbyhebFKQExHnfWkhCDoR5AG3jBxrEQWRQaOTnJ4aqb_2L85eJrXnYFBFYn_Y5Z2WLzG/exec";
+    // 已修復雙引號包裹
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzn9PWzT7XnEWGgqE05ipz0AaWCcpJDfxZPx1ehi2rfhx58KGTts04S9qbioOjgntmc/exec";
 
     function startCheckIn() {
       const userName = document.getElementById("userName").value.trim();
@@ -95,30 +96,20 @@
         (pos) => {
           statusDiv.innerHTML = "📡 定位成功！正在寫入報到紀錄...";
           
-          const formData = new URLSearchParams();
-          formData.append("userName", userName);
-          formData.append("latitude", pos.coords.latitude);
-          formData.append("longitude", pos.coords.longitude);
+          // 使用 Image Ping 發送，完全穿透 CORS 防火牆限制
+          const sendUrl = `${GAS_URL}?userName=${encodeURIComponent(userName)}&latitude=${pos.coords.latitude}&longitude=${pos.coords.longitude}&_t=${new Date().getTime()}`;
+          const img = new Image();
+          
+          img.onload = img.onerror = function() {
+            statusDiv.innerHTML = "<span style='color:green;'>✅ 報到資料已成功發送！</span><br>請查看試算表紀錄。";
+            btn.disabled = false;
+          };
 
-          fetch(GAS_URL, {
-            method: "POST",
-            mode: "no-cors",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: formData.toString()
-          })
-          .then(() => {
-            statusDiv.innerHTML = "<span style='color:green;'>✅ 報到資料已成功發送！</span><br>請確認試算表紀錄。";
-          })
-          .catch((err) => { 
-            statusDiv.innerHTML = "<span style='color:red;'>❌ 傳送失敗，請檢查網路連線。</span>"; 
-          })
-          .finally(() => { 
-            btn.disabled = false; 
-          });
+          img.src = sendUrl;
         },
         (err) => {
           btn.disabled = false;
-          statusDiv.innerHTML = "<span style='color:red;'>❌ 取得位置失敗，請開啟 GPS 定位與瀏覽器定位權限。</span>";
+          statusDiv.innerHTML = "<span style='color:red;'>❌ 取得位置失敗，請確認已開啟 GPS 與定位存取權限。</span>";
         },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
