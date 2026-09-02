@@ -106,8 +106,8 @@
   </div>
 
   <script>
-    // 已更新為您全新部署的 Apps Script API 網址
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzWMAieJm7tTwGK9cYKLLtmLIiThlik9PaQH3XAxk0QyrmZJ_3cFJ-qcsXCzNwvuSVX/exec";
+    // 已帶入最新全新的 Web App 部署網址
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxApjuQXiRoOSRfLO5LllzG6prsxqYaeUDb4g44KeLZK6RntkwCAuJXpOI-aP72h9nE/exec";
 
     function submitCheckIn() {
       const usernameInput = document.getElementById("username");
@@ -149,7 +149,7 @@
                   usernameInput.value = "";
                 } else {
                   statusDiv.className = "error";
-                  statusDiv.innerHTML = `❌ ${data.message} (距離標的物約 ${data.distance} 公尺)`;
+                  statusDiv.innerHTML = `❌ ${data.message}`;
                 }
               } else {
                 statusDiv.className = "error";
