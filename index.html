@@ -3,115 +3,191 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>現場真實 GPS 報到系統</title>
+  <title>即時定位簽到系統</title>
   <style>
-    body { 
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
-      background: #f4f6f9; 
-      display: flex; 
-      justify-content: center; 
-      align-items: center; 
-      min-height: 100vh; 
-      margin: 0; 
-      padding: 20px; 
-      box-sizing: border-box; 
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
-    .card { 
-      background: white; 
-      padding: 30px 25px; 
-      border-radius: 16px; 
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
-      width: 100%; 
-      max-width: 380px; 
-      text-align: center; 
+    body {
+      background-color: #f5f7fa;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
     }
-    h2 { margin-top: 0; color: #333; font-size: 22px; }
-    input { 
-      width: 100%; 
-      padding: 12px; 
-      margin: 15px 0 20px 0; 
-      border: 1px solid #ccc; 
-      border-radius: 8px; 
-      font-size: 16px; 
-      box-sizing: border-box; 
+    .card {
+      background: #ffffff;
+      width: 100%;
+      max-width: 400px;
+      padding: 30px;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+      text-align: center;
+    }
+    h2 {
+      color: #2c3e50;
+      margin-bottom: 20px;
+      font-size: 22px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #6c757d;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 15px;
+      border: 1px solid #ced4da;
+      border-radius: 8px;
+      font-size: 16px;
       outline: none;
+      transition: border-color 0.2s;
     }
-    input:focus { border-color: #00b900; }
-    button { 
-      width: 100%; 
-      background: #00b900; 
-      color: white; 
-      border: none; 
-      padding: 14px; 
-      font-size: 18px; 
-      font-weight: bold; 
-      border-radius: 8px; 
-      cursor: pointer; 
-      transition: background 0.2s;
+    input[type="text"]:focus {
+      border-color: #007bff;
     }
-    button:active { background: #009900; }
-    button:disabled { background: #ccc; cursor: not-allowed; }
-    #status { 
-      margin-top: 20px; 
-      font-size: 16px; 
-      font-weight: bold; 
-      line-height: 1.5; 
-      word-break: break-all; 
+    button {
+      width: 100%;
+      padding: 14px;
+      background-color: #007bff;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    button:disabled {
+      background-color: #6c757d;
+      cursor: not-allowed;
+    }
+    #statusMessage {
+      margin-top: 20px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .success {
+      color: #28a745;
+      font-weight: bold;
+    }
+    .error {
+      color: #dc3545;
+      font-weight: bold;
+    }
+    .info {
+      color: #17a2b8;
     }
   </style>
 </head>
 <body>
 
   <div class="card">
-    <h2>📍 現場真實 GPS 報到</h2>
-    <input type="text" id="userName" placeholder="請輸入您的姓名" required />
-    <button id="btn" onclick="startCheckIn()">取得真實 GPS 並報到</button>
-    <div id="status"></div>
+    <h2>📍 快速簽到系統</h2>
+    <div class="form-group">
+      <label for="username">請輸入您的姓名</label>
+      <input type="text" id="username" placeholder="例：王小明" required>
+    </div>
+    <button id="checkInBtn" onclick="submitCheckIn()">獨立定位簽到</button>
+    <div id="statusMessage"></div>
   </div>
 
   <script>
-    // 已修復雙引號包裹
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbzn9PWzT7XnEWGgqE05ipz0AaWCcpJDfxZPx1ehi2rfhx58KGTts04S9qbioOjgntmc/exec";
+    // 已更新為您最新的 Apps Script Web App 部署網址
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzU_4OVDHCiGIojV5bZdh_Al-NRZ669ij8LXC13ywWz6kjuuIY6KfrCHl53WXgDlII/exec";
 
-    function startCheckIn() {
-      const userName = document.getElementById("userName").value.trim();
-      const statusDiv = document.getElementById("status");
-      const btn = document.getElementById("btn");
+    function submitCheckIn() {
+      const usernameInput = document.getElementById("username");
+      const btn = document.getElementById("checkInBtn");
+      const statusDiv = document.getElementById("statusMessage");
+      const username = usernameInput.value.trim();
 
-      if (!userName) { 
-        alert("請輸入姓名！"); 
-        return; 
-      }
-      
-      if (!navigator.geolocation) { 
-        statusDiv.innerHTML = "<span style='color:red;'>手機裝置不支援 GPS 定位功能！</span>"; 
-        return; 
+      if (!username) {
+        alert("請輸入姓名！");
+        return;
       }
 
+      if (!navigator.geolocation) {
+        alert("您的裝置或瀏覽器不支援 GPS 定位功能。");
+        return;
+      }
+
+      // 停用按鈕並顯示讀取狀態
       btn.disabled = true;
-      statusDiv.style.color = "#333";
-      statusDiv.innerHTML = "⏳ 正在獲取手機高精度 GPS 定位...";
+      statusDiv.className = "info";
+      statusDiv.innerHTML = "正在獲取 GPS 定位資訊中...";
 
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          statusDiv.innerHTML = "📡 定位成功！正在寫入報到紀錄...";
-          
-          // 使用 Image Ping 發送，完全穿透 CORS 防火牆限制
-          const sendUrl = `${GAS_URL}?userName=${encodeURIComponent(userName)}&latitude=${pos.coords.latitude}&longitude=${pos.coords.longitude}&_t=${new Date().getTime()}`;
-          const img = new Image();
-          
-          img.onload = img.onerror = function() {
-            statusDiv.innerHTML = "<span style='color:green;'>✅ 報到資料已成功發送！</span><br>請查看試算表紀錄。";
-            btn.disabled = false;
-          };
+        function(position) {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
 
-          img.src = sendUrl;
+          statusDiv.innerHTML = "獲取定位成功，傳送資料至雲端硬碟...";
+
+          // 構建帶有參數的 URL 請求
+          const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}`;
+
+          fetch(requestUrl)
+            .then(response => response.json())
+            .then(data => {
+              btn.disabled = false;
+              if (data.status === "success") {
+                if (data.isSuccess) {
+                  statusDiv.className = "success";
+                  statusDiv.innerHTML = `✅ ${data.message} (距離標的物約 ${data.distance} 公尺)`;
+                  usernameInput.value = ""; // 清空輸入框
+                } else {
+                  statusDiv.className = "error";
+                  statusDiv.innerHTML = `❌ ${data.message} (距離標的物約 ${data.distance} 公尺)`;
+                }
+              } else {
+                statusDiv.className = "error";
+                statusDiv.innerHTML = `❌ 簽到失敗：${data.message}`;
+              }
+            })
+            .catch(error => {
+              console.error("Fetch error:", error);
+              btn.disabled = false;
+              statusDiv.className = "error";
+              statusDiv.innerHTML = "❌ 網路傳輸失敗，請確認 Apps Script 權限已開啟為「任何人」。";
+            });
         },
-        (err) => {
+        function(error) {
           btn.disabled = false;
-          statusDiv.innerHTML = "<span style='color:red;'>❌ 取得位置失敗，請確認已開啟 GPS 與定位存取權限。</span>";
+          statusDiv.className = "error";
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              statusDiv.innerHTML = "❌ 您已拒絕提供定位權限，請於瀏覽器設定中開啟。";
+              break;
+            case error.POSITION_UNAVAILABLE:
+              statusDiv.innerHTML = "❌ 無法取得目前的定位資訊。";
+              break;
+            case error.TIMEOUT:
+              statusDiv.innerHTML = "❌ 定位請求超時，請重試。";
+              break;
+            default:
+              statusDiv.innerHTML = "❌ 定位發生未知錯誤。";
+              break;
+          }
         },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        }
       );
     }
   </script>
