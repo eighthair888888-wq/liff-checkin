@@ -72,8 +72,9 @@
       background-color: #0056b3;
     }
     button:disabled {
-      background-color: #6c757d;
+      background-color: #6c757d !important;
       cursor: not-allowed;
+      opacity: 0.6;
     }
     #statusMessage {
       margin-top: 20px;
@@ -108,13 +109,19 @@
     </div>
     <button id="checkInBtn" onclick="submitCheckIn()">獨立定位簽到</button>
     <div id="statusMessage"></div>
-    <div class="notice">🔒 系統已啟用雙重防護，每台手機每日僅可簽到一次</div>
+    <div class="notice">🔒 本裝置每日僅限按壓簽到一次</div>
   </div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwFW4GyscWx1j1SMy-6B9Vys3HEfkb9qBzApekFvH0RUvd_nkTio7kHQ_mlmUBavOsn/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxApjuQXiRoOSRfLO5LllzG6prsxqYaeUDb4g44KeLZK6RntkwCAuJXpOI-aP72h9nE/exec";
 
-    // 產生或讀取這台手機的硬體唯一 ID (即便開無痕分頁也會儘可能維持)
+    // 取得今天日期的字串 (YYYY-MM-DD)
+    function getTodayString() {
+      const today = new Date();
+      return today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    }
+
+    // 產生或讀取裝置指紋
     function getDeviceId() {
       let devId = localStorage.getItem("device_fingerprint");
       if (!devId) {
@@ -123,6 +130,34 @@
       }
       return devId;
     }
+
+    // 鎖定按鈕函數
+    function lockButton(msg) {
+      const btn = document.getElementById("checkInBtn");
+      const usernameInput = document.getElementById("username");
+      const statusDiv = document.getElementById("statusMessage");
+
+      btn.disabled = true;
+      usernameInput.disabled = true;
+      if (msg) {
+        statusDiv.className = "info";
+        statusDiv.innerHTML = msg;
+      }
+    }
+
+    // 頁面載入時檢查：今天是否已經按過按鈕
+    window.onload = function() {
+      const lastClickDate = localStorage.getItem("last_click_date");
+      const savedUser = localStorage.getItem("last_click_user");
+      const today = getTodayString();
+
+      if (lastClickDate === today) {
+        if (savedUser) {
+          document.getElementById("username").value = savedUser;
+        }
+        lockButton(`🔒 此手機今日已使用過「獨立定位簽到」，無法再次點擊。`);
+      }
+    };
 
     function submitCheckIn() {
       const usernameInput = document.getElementById("username");
@@ -140,7 +175,12 @@
         return;
       }
 
-      btn.disabled = true;
+      // 【關鍵機制】：一按下去，立即寫入今日點擊紀錄，並反灰按鈕
+      const today = getTodayString();
+      localStorage.setItem("last_click_date", today);
+      localStorage.setItem("last_click_user", username);
+      lockButton();
+
       statusDiv.className = "info";
       statusDiv.innerHTML = "正在獲取 GPS 定位資訊中...";
 
@@ -150,42 +190,30 @@
           const lng = position.coords.longitude;
           const deviceId = getDeviceId();
 
-          statusDiv.innerHTML = "驗證裝置與定位資訊中...";
+          statusDiv.innerHTML = "驗證定位中...";
 
           const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}&device=${encodeURIComponent(deviceId)}`;
 
           fetch(requestUrl)
             .then(response => response.json())
             .then(data => {
-              if (data.status === "success") {
-                if (data.isSuccess) {
-                  statusDiv.className = "success";
-                  statusDiv.innerHTML = `✅ ${data.message} (距離標的物約 ${data.distance} 公尺)`;
-                  usernameInput.disabled = true;
-                  btn.disabled = true;
-                } else {
-                  btn.disabled = false;
-                  statusDiv.className = "error";
-                  statusDiv.innerHTML = `❌ ${data.message}`;
-                }
+              if (data.status === "success" && data.isSuccess) {
+                statusDiv.className = "success";
+                statusDiv.innerHTML = `✅ ${data.message} (距離標的物約 ${data.distance} 公尺)`;
               } else {
-                btn.disabled = false;
                 statusDiv.className = "error";
-                // 這裡會顯示後端阻擋代簽的訊息
-                statusDiv.innerHTML = `❌ 簽到失敗：${data.message}`;
+                statusDiv.innerHTML = `❌ ${data.message || '簽到失敗'}`;
               }
             })
             .catch(error => {
               console.error("Fetch error:", error);
-              btn.disabled = false;
               statusDiv.className = "error";
-              statusDiv.innerHTML = "❌ 網路傳輸失敗，請再試一次。";
+              statusDiv.innerHTML = "❌ 傳輸失敗，但今日簽到次數已使用。";
             });
         },
         function(error) {
-          btn.disabled = false;
           statusDiv.className = "error";
-          statusDiv.innerHTML = "❌ 無法獲取定位，請確認已開啟權限。";
+          statusDiv.innerHTML = "❌ 無法獲取定位，今日簽到次數已使用。";
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
