@@ -108,48 +108,23 @@
     </div>
     <button id="checkInBtn" onclick="submitCheckIn()">獨立定位簽到</button>
     <div id="statusMessage"></div>
-    <div class="notice">🔒 每台手機每日僅可完成一次簽到</div>
+    <div class="notice">🔒 系統已啟用雙重防護，每台手機每日僅可簽到一次</div>
   </div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxApjuQXiRoOSRfLO5LllzG6prsxqYaeUDb4g44KeLZK6RntkwCAuJXpOI-aP72h9nE/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwaIqyXKXvVDem_g6rzVDhMUKbgvJPX4fF9SHinniO2JdHWZw471cY4fzmRMsgXz9kO/exec";
 
-    // 取得今天日期的字串 (格式: YYYY-MM-DD)
-    function getTodayString() {
-      const today = new Date();
-      return today.toISOString().split('T')[0];
-    }
-
-    // 頁面載入時，檢查今日是否已簽到過
-    window.onload = function() {
-      checkDailyLock();
-    };
-
-    function checkDailyLock() {
-      const savedDate = localStorage.getItem("checkin_date");
-      const savedUser = localStorage.getItem("checkin_user");
-      const today = getTodayString();
-
-      // 如果紀錄的日期是「今天」，阻擋再次簽到
-      if (savedDate === today) {
-        const btn = document.getElementById("checkInBtn");
-        const statusDiv = document.getElementById("statusMessage");
-        const usernameInput = document.getElementById("username");
-
-        btn.disabled = true;
-        usernameInput.value = savedUser || "";
-        usernameInput.disabled = true;
-
-        statusDiv.className = "info";
-        statusDiv.innerHTML = `🔒 此裝置今日已完成「${savedUser}」的簽到。<br>同一台手機每日僅限簽到一次。`;
-        return true;
+    // 產生或讀取這台手機的硬體唯一 ID (即便開無痕分頁也會儘可能維持)
+    function getDeviceId() {
+      let devId = localStorage.getItem("device_fingerprint");
+      if (!devId) {
+        devId = 'DEV-' + Math.random().toString(36).substring(2, 10) + '-' + new Date().getTime().toString(36);
+        localStorage.setItem("device_fingerprint", devId);
       }
-      return false;
+      return devId;
     }
 
     function submitCheckIn() {
-      if (checkDailyLock()) return;
-
       const usernameInput = document.getElementById("username");
       const btn = document.getElementById("checkInBtn");
       const statusDiv = document.getElementById("statusMessage");
@@ -161,7 +136,7 @@
       }
 
       if (!navigator.geolocation) {
-        alert("您的裝置或瀏覽器不支援 GPS 定位功能。");
+        alert("您的裝置不支援 GPS 定位功能。");
         return;
       }
 
@@ -173,20 +148,17 @@
         function(position) {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
+          const deviceId = getDeviceId();
 
-          statusDiv.innerHTML = "獲取定位成功，傳送資料至雲端硬碟...";
+          statusDiv.innerHTML = "驗證裝置與定位資訊中...";
 
-          const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}`;
+          const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}&device=${encodeURIComponent(deviceId)}`;
 
           fetch(requestUrl)
             .then(response => response.json())
             .then(data => {
               if (data.status === "success") {
                 if (data.isSuccess) {
-                  // 簽到成功：寫入今日日期與姓名至瀏覽器 localStorage
-                  localStorage.setItem("checkin_date", getTodayString());
-                  localStorage.setItem("checkin_user", username);
-
                   statusDiv.className = "success";
                   statusDiv.innerHTML = `✅ ${data.message} (距離標的物約 ${data.distance} 公尺)`;
                   usernameInput.disabled = true;
@@ -199,6 +171,7 @@
               } else {
                 btn.disabled = false;
                 statusDiv.className = "error";
+                // 這裡會顯示後端阻擋代簽的訊息
                 statusDiv.innerHTML = `❌ 簽到失敗：${data.message}`;
               }
             })
@@ -206,32 +179,15 @@
               console.error("Fetch error:", error);
               btn.disabled = false;
               statusDiv.className = "error";
-              statusDiv.innerHTML = "❌ 網路傳輸失敗，請確認存取權限已開啟為「任何人」。";
+              statusDiv.innerHTML = "❌ 網路傳輸失敗，請再試一次。";
             });
         },
         function(error) {
           btn.disabled = false;
           statusDiv.className = "error";
-          switch (error.code) {
-            case error.PERMISSION_DENIED:
-              statusDiv.innerHTML = "❌ 您已拒絕提供定位權限，請於瀏覽器設定中開啟。";
-              break;
-            case error.POSITION_UNAVAILABLE:
-              statusDiv.innerHTML = "❌ 無法取得目前的定位資訊。";
-              break;
-            case error.TIMEOUT:
-              statusDiv.innerHTML = "❌ 定位請求超時，請重試。";
-              break;
-            default:
-              statusDiv.innerHTML = "❌ 定位發生未知錯誤。";
-              break;
-          }
+          statusDiv.innerHTML = "❌ 無法獲取定位，請確認已開啟權限。";
         },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0
-        }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     }
   </script>
