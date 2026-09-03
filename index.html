@@ -109,49 +109,17 @@
     </div>
     <button id="checkInBtn" onclick="submitCheckIn()">獨立定位簽到</button>
     <div id="statusMessage"></div>
-    <div class="notice">🔒 雙重防護：本裝置每日僅可簽到一次</div>
+    <div class="notice">🔒 雙重防護：同一網路/手機每日僅能簽到一次</div>
   </div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzL0vgl08jeZzpNYn7rmhc_pGWTB0wXMpXhqjbA4sPPmIAEG5GvzOv0gWDABor8L3ZN/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzcwB2aGzcoueMr6Qxt72G7juOL0ipyK4A73kdcKGh5nMIvZ9AL1pL7LRciR_k0xOvz/exec";
 
-    // 取得今天日期的字串 (YYYY-MM-DD)
     function getTodayString() {
       const today = new Date();
       return today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
     }
 
-    // 產生基於手機硬體特徵的「固定裝置碼」（不隨時間改變）
-    function getHardwareFingerprint() {
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-      let renderer = "unknown";
-      if (gl) {
-        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-        if (debugInfo) {
-          renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-        }
-      }
-      
-      const str = [
-        navigator.userAgent,
-        screen.height,
-        screen.width,
-        screen.colorDepth,
-        renderer
-      ].join('||');
-
-      // 簡單的哈希演算法轉成固定 ID
-      let hash = 0;
-      for (let i = 0; i < str.length; i++) {
-        const char = str.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash |= 0;
-      }
-      return 'DEV-' + Math.abs(hash).toString(36);
-    }
-
-    // 鎖定 UI 元素
     function lockUI(msg) {
       const btn = document.getElementById("checkInBtn");
       const usernameInput = document.getElementById("username");
@@ -165,7 +133,6 @@
       }
     }
 
-    // 網頁開啟時檢查今天是否已點擊過
     window.onload = function() {
       const lastClickDate = localStorage.getItem("last_click_date");
       const savedUser = localStorage.getItem("last_click_user");
@@ -175,11 +142,22 @@
         if (savedUser) {
           document.getElementById("username").value = savedUser;
         }
-        lockUI(`🔒 此手機今日已完成「獨立定位簽到」，無法再次點擊。`);
+        lockUI(`🔒 本手機今日已完成簽到，按鈕已鎖定。`);
       }
     };
 
-    function submitCheckIn() {
+    // 取得手機目前的真實對外 IP 位址
+    async function getUserIP() {
+      try {
+        const res = await fetch('https://api.ipify.org?format=json');
+        const data = await res.json();
+        return data.ip;
+      } catch (e) {
+        return 'IP-' + Math.random().toString(36).substring(2, 8);
+      }
+    }
+
+    async function submitCheckIn() {
       const usernameInput = document.getElementById("username");
       const statusDiv = document.getElementById("statusMessage");
       const username = usernameInput.value.trim();
@@ -194,48 +172,55 @@
         return;
       }
 
-      // 按下瞬間立刻鎖定前端按鈕與輸入框
+      // 點擊後先記錄在本地（提供即時 UI 鎖定）
       const today = getTodayString();
       localStorage.setItem("last_click_date", today);
       localStorage.setItem("last_click_user", username);
       lockUI();
 
       statusDiv.className = "info";
-      statusDiv.innerHTML = "正在獲取 GPS 定位資訊中...";
+      statusDiv.innerHTML = "正在驗證網路 IP 與獲取 GPS 定位資訊中...";
 
-      navigator.geolocation.getCurrentPosition(
-        function(position) {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          const deviceId = getHardwareFingerprint(); // 使用硬體固定指紋
+      try {
+        // 抓取 IP 位址
+        const clientIp = await getUserIP();
 
-          statusDiv.innerHTML = "驗證裝置與定位中...";
+        navigator.geolocation.getCurrentPosition(
+          function(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
 
-          const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}&device=${encodeURIComponent(deviceId)}`;
+            statusDiv.innerHTML = "傳送簽到資料中...";
 
-          fetch(requestUrl)
-            .then(response => response.json())
-            .then(data => {
-              if (data.status === "success" && data.isSuccess) {
-                statusDiv.className = "success";
-                statusDiv.innerHTML = `✅ ${data.message} (距離標的物約 ${data.distance} 公尺)`;
-              } else {
+            const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}&ip=${encodeURIComponent(clientIp)}`;
+
+            fetch(requestUrl)
+              .then(response => response.json())
+              .then(data => {
+                if (data.status === "success" && data.isSuccess) {
+                  statusDiv.className = "success";
+                  statusDiv.innerHTML = `✅ ${data.message} (距離標的物約 ${data.distance} 公尺)`;
+                } else {
+                  statusDiv.className = "error";
+                  statusDiv.innerHTML = `❌ ${data.message || '簽到失敗'}`;
+                }
+              })
+              .catch(error => {
+                console.error("Fetch error:", error);
                 statusDiv.className = "error";
-                statusDiv.innerHTML = `❌ ${data.message || '簽到失敗'}`;
-              }
-            })
-            .catch(error => {
-              console.error("Fetch error:", error);
-              statusDiv.className = "error";
-              statusDiv.innerHTML = "❌ 傳輸失敗，但今日簽到次數已使用。";
-            });
-        },
-        function(error) {
-          statusDiv.className = "error";
-          statusDiv.innerHTML = "❌ 無法獲取定位，今日簽到次數已使用。";
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
+                statusDiv.innerHTML = "❌ 傳輸失敗，但今日簽到次數已使用。";
+              });
+          },
+          function(error) {
+            statusDiv.className = "error";
+            statusDiv.innerHTML = "❌ 無法獲取定位，今日簽到次數已使用。";
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      } catch (err) {
+        statusDiv.className = "error";
+        statusDiv.innerHTML = "❌ 網路驗證錯誤，請重試。";
+      }
     }
   </script>
 </body>
