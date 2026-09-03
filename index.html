@@ -109,64 +109,49 @@
     </div>
     <button id="checkInBtn" onclick="submitCheckIn()">獨立定位簽到</button>
     <div id="statusMessage"></div>
-    <div class="notice">🔒 裝置綁定：同一支手機每日僅能簽到一次</div>
+    <div class="notice">🔒 雙重防護：本裝置每日僅可簽到一次</div>
   </div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxyk564mBjaODbxFFrp_QzVlu2JTEGBtvxu5jTIZzOWgF0yJ5Bq6rb34gO_YQLXShAZ/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxxI3uEvWp5xEmLUXYHXzxiwKY6EGQESY0XIkukt-ViVibtvtZQFHDCCDZ-RYItpnDE/exec";
 
+    // 取得今天日期的字串 (YYYY-MM-DD)
     function getTodayString() {
       const today = new Date();
       return today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
     }
 
-    // 產生基於手機 GPU 渲染特徵的固定手機編碼（不隨時間/快取改變）
-    function getHardwareDeviceCode() {
-      try {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 200;
-        canvas.height = 50;
-
-        ctx.textBaseline = "top";
-        ctx.font = "14px 'Arial'";
-        ctx.textBaseline = "alphabetic";
-        ctx.fillStyle = "#f60";
-        ctx.fillRect(125,1,62,20);
-        ctx.fillStyle = "#069";
-        ctx.fillText("CheckIn-Mobile-ID", 2, 15);
-        ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
-        ctx.fillText("CheckIn-Mobile-ID", 4, 17);
-
-        const dataURI = canvas.toDataURL();
-        let hash = 0;
-        for (let i = 0; i < dataURI.length; i++) {
-          const char = dataURI.charCodeAt(i);
-          hash = ((hash << 5) - hash) + char;
-          hash |= 0;
+    // 產生基於手機硬體特徵的「固定裝置碼」（不隨時間改變）
+    function getHardwareFingerprint() {
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      let renderer = "unknown";
+      if (gl) {
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        if (debugInfo) {
+          renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
         }
-
-        // 加上螢幕色彩與解析度，組合成固定手機編碼
-        const hwInfo = [
-          Math.abs(hash).toString(36),
-          screen.height,
-          screen.width,
-          screen.colorDepth,
-          navigator.hardwareConcurrency || 4
-        ].join('-');
-
-        let finalHash = 0;
-        for (let j = 0; j < hwInfo.length; j++) {
-          finalHash = ((finalHash << 5) - finalHash) + hwInfo.charCodeAt(j);
-          finalHash |= 0;
-        }
-
-        return 'PHONE-' + Math.abs(finalHash).toString(36).toUpperCase();
-      } catch (e) {
-        return 'PHONE-FIXED-DEVICE';
       }
+      
+      const str = [
+        navigator.userAgent,
+        screen.height,
+        screen.width,
+        screen.colorDepth,
+        renderer
+      ].join('||');
+
+      // 簡單的哈希演算法轉成固定 ID
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash |= 0;
+      }
+      return 'DEV-' + Math.abs(hash).toString(36);
     }
 
+    // 鎖定 UI 元素
     function lockUI(msg) {
       const btn = document.getElementById("checkInBtn");
       const usernameInput = document.getElementById("username");
@@ -180,6 +165,7 @@
       }
     }
 
+    // 網頁開啟時檢查今天是否已點擊過
     window.onload = function() {
       const lastClickDate = localStorage.getItem("last_click_date");
       const savedUser = localStorage.getItem("last_click_user");
@@ -189,7 +175,7 @@
         if (savedUser) {
           document.getElementById("username").value = savedUser;
         }
-        lockUI(`🔒 本手機今日已完成簽到，按鈕已鎖定。`);
+        lockUI(`🔒 此手機今日已完成「獨立定位簽到」，無法再次點擊。`);
       }
     };
 
@@ -208,25 +194,24 @@
         return;
       }
 
+      // 按下瞬間立刻鎖定前端按鈕與輸入框
       const today = getTodayString();
       localStorage.setItem("last_click_date", today);
       localStorage.setItem("last_click_user", username);
       lockUI();
 
       statusDiv.className = "info";
-      statusDiv.innerHTML = "正在讀取手機硬體特徵與 GPS 定位中...";
-
-      // 取得這台手機特有的固定編碼
-      const phoneCode = getHardwareDeviceCode();
+      statusDiv.innerHTML = "正在獲取 GPS 定位資訊中...";
 
       navigator.geolocation.getCurrentPosition(
         function(position) {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
+          const deviceId = getHardwareFingerprint(); // 使用硬體固定指紋
 
-          statusDiv.innerHTML = "傳送簽到資料中...";
+          statusDiv.innerHTML = "驗證裝置與定位中...";
 
-          const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}&device=${encodeURIComponent(phoneCode)}`;
+          const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}&device=${encodeURIComponent(deviceId)}`;
 
           fetch(requestUrl)
             .then(response => response.json())
