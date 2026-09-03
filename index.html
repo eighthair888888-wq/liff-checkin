@@ -4,8 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>即時定位簽到系統</title>
-  <!-- 引入 LINE LIFF SDK -->
-  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -111,18 +109,62 @@
     </div>
     <button id="checkInBtn" onclick="submitCheckIn()">獨立定位簽到</button>
     <div id="statusMessage"></div>
-    <div class="notice">🔒 雙重防護：單一帳號/裝置每日僅能簽到一次</div>
+    <div class="notice">🔒 裝置綁定：同一支手機每日僅能簽到一次</div>
   </div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyNu92WPMu5uHqJwmQ56lVZ3TB2NRBuhzuI-YSSoigUZ3uRu8omoud7udTxk2kPZNuK/exec";
-    const MY_LIFF_ID = "2006789012-ABC12345"; // 若您有 LINE Developers LIFF ID 可填入，沒有亦可直接運作
-
-    let lineUserId = "";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxyk564mBjaODbxFFrp_QzVlu2JTEGBtvxu5jTIZzOWgF0yJ5Bq6rb34gO_YQLXShAZ/exec";
 
     function getTodayString() {
       const today = new Date();
       return today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    }
+
+    // 產生基於手機 GPU 渲染特徵的固定手機編碼（不隨時間/快取改變）
+    function getHardwareDeviceCode() {
+      try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 200;
+        canvas.height = 50;
+
+        ctx.textBaseline = "top";
+        ctx.font = "14px 'Arial'";
+        ctx.textBaseline = "alphabetic";
+        ctx.fillStyle = "#f60";
+        ctx.fillRect(125,1,62,20);
+        ctx.fillStyle = "#069";
+        ctx.fillText("CheckIn-Mobile-ID", 2, 15);
+        ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
+        ctx.fillText("CheckIn-Mobile-ID", 4, 17);
+
+        const dataURI = canvas.toDataURL();
+        let hash = 0;
+        for (let i = 0; i < dataURI.length; i++) {
+          const char = dataURI.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash |= 0;
+        }
+
+        // 加上螢幕色彩與解析度，組合成固定手機編碼
+        const hwInfo = [
+          Math.abs(hash).toString(36),
+          screen.height,
+          screen.width,
+          screen.colorDepth,
+          navigator.hardwareConcurrency || 4
+        ].join('-');
+
+        let finalHash = 0;
+        for (let j = 0; j < hwInfo.length; j++) {
+          finalHash = ((finalHash << 5) - finalHash) + hwInfo.charCodeAt(j);
+          finalHash |= 0;
+        }
+
+        return 'PHONE-' + Math.abs(finalHash).toString(36).toUpperCase();
+      } catch (e) {
+        return 'PHONE-FIXED-DEVICE';
+      }
     }
 
     function lockUI(msg) {
@@ -138,8 +180,7 @@
       }
     }
 
-    // 初始化 LINE LIFF
-    window.onload = async function() {
+    window.onload = function() {
       const lastClickDate = localStorage.getItem("last_click_date");
       const savedUser = localStorage.getItem("last_click_user");
       const today = getTodayString();
@@ -148,36 +189,11 @@
         if (savedUser) {
           document.getElementById("username").value = savedUser;
         }
-        lockUI(`🔒 本裝置今日已完成簽到，按鈕已鎖定。`);
-      }
-
-      // 嘗試初始化 LIFF 取得 LINE ID
-      try {
-        if (typeof liff !== 'undefined' && MY_LIFF_ID && !MY_LIFF_ID.includes("ABC12345")) {
-          await liff.init({ liffId: MY_LIFF_ID });
-          if (liff.isLoggedIn()) {
-            const profile = await liff.getProfile();
-            lineUserId = profile.userId;
-          }
-        }
-      } catch (err) {
-        console.log("LIFF Init Pass");
+        lockUI(`🔒 本手機今日已完成簽到，按鈕已鎖定。`);
       }
     };
 
-    // 取得 iPhone 裝置的輔助固定標籤
-    function getDeviceIdentifier() {
-      if (lineUserId) return lineUserId;
-
-      let devId = localStorage.getItem("iphone_persistent_id");
-      if (!devId) {
-        devId = 'IOS-' + Math.random().toString(36).substring(2, 10) + '-' + Date.now().toString(36);
-        localStorage.setItem("iphone_persistent_id", devId);
-      }
-      return devId;
-    }
-
-    async function submitCheckIn() {
+    function submitCheckIn() {
       const usernameInput = document.getElementById("username");
       const statusDiv = document.getElementById("statusMessage");
       const username = usernameInput.value.trim();
@@ -198,9 +214,10 @@
       lockUI();
 
       statusDiv.className = "info";
-      statusDiv.innerHTML = "正在驗證裝置與獲取 GPS 定位中...";
+      statusDiv.innerHTML = "正在讀取手機硬體特徵與 GPS 定位中...";
 
-      const userId = getDeviceIdentifier();
+      // 取得這台手機特有的固定編碼
+      const phoneCode = getHardwareDeviceCode();
 
       navigator.geolocation.getCurrentPosition(
         function(position) {
@@ -209,7 +226,7 @@
 
           statusDiv.innerHTML = "傳送簽到資料中...";
 
-          const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}&userId=${encodeURIComponent(userId)}`;
+          const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}&device=${encodeURIComponent(phoneCode)}`;
 
           fetch(requestUrl)
             .then(response => response.json())
