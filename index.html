@@ -109,7 +109,7 @@
     </div>
     <button id="checkInBtn" onclick="submitCheckIn()">獨立定位簽到</button>
     <div id="statusMessage"></div>
-    <div class="notice">🔒 裝置單日限制：同一支手機每日僅能簽到一次</div>
+    <div class="notice">🔒 雙重防護：本裝置每日僅可簽到一次</div>
   </div>
 
   <script>
@@ -121,22 +121,37 @@
       return today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
     }
 
-    // Cookie 寫入工具（有效期限設為到今天深夜 23:59:59）
-    function setDailyCookie(name, value) {
-      const now = new Date();
-      const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-      document.cookie = `${name}=${encodeURIComponent(value)}; expires=${midnight.toUTCString()}; path=/; SameSite=Lax`;
+    // 產生基於手機硬體特徵的「固定裝置碼」（不隨時間改變）
+    function getHardwareFingerprint() {
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      let renderer = "unknown";
+      if (gl) {
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        if (debugInfo) {
+          renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+        }
+      }
+      
+      const str = [
+        navigator.userAgent,
+        screen.height,
+        screen.width,
+        screen.colorDepth,
+        renderer
+      ].join('||');
+
+      // 簡單的哈希演算法轉成固定 ID
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash |= 0;
+      }
+      return 'DEV-' + Math.abs(hash).toString(36);
     }
 
-    // Cookie 讀取工具
-    function getCookie(name) {
-      const value = `; ${document.cookie}`;
-      const parts = value.split(`; ${name}=`);
-      if (parts.length === 2) return decodeURIComponent(parts.pop().split(';').shift());
-      return null;
-    }
-
-    // 鎖定按鈕與輸入框
+    // 鎖定 UI 元素
     function lockUI(msg) {
       const btn = document.getElementById("checkInBtn");
       const usernameInput = document.getElementById("username");
@@ -150,35 +165,21 @@
       }
     }
 
-    // 檢查這台手機今天是否已經按過按鈕
-    function checkIfLockedToday() {
+    // 網頁開啟時檢查今天是否已點擊過
+    window.onload = function() {
+      const lastClickDate = localStorage.getItem("last_click_date");
+      const savedUser = localStorage.getItem("last_click_user");
       const today = getTodayString();
-      const cookieDate = getCookie("device_last_checkin_date");
-      const localDate = localStorage.getItem("device_last_checkin_date");
 
-      // 雙重檢查：Cookie 或 LocalStorage 只要任一記錄為今天，就代表這台手機今天按過了
-      if (cookieDate === today || localDate === today) {
-        const savedUser = getCookie("device_last_user") || localStorage.getItem("device_last_user") || "";
+      if (lastClickDate === today) {
         if (savedUser) {
           document.getElementById("username").value = savedUser;
         }
-        lockUI(`🔒 這台手機今日已完成簽到！更換姓名也無法再次簽到。`);
-        return true;
+        lockUI(`🔒 此手機今日已完成「獨立定位簽到」，無法再次點擊。`);
       }
-      return false;
-    }
-
-    // 頁面開啟時自動執行檢測
-    window.onload = function() {
-      checkIfLockedToday();
     };
 
     function submitCheckIn() {
-      // 點擊瞬間先再次確認這台手機今天是否已被鎖定
-      if (checkIfLockedToday()) {
-        return;
-      }
-
       const usernameInput = document.getElementById("username");
       const statusDiv = document.getElementById("statusMessage");
       const username = usernameInput.value.trim();
@@ -193,14 +194,10 @@
         return;
       }
 
-      // 【關鍵行為】：只要一點擊「獨立定位簽到」，不論後續成功與否、更換什麼姓名，立刻把這台手機標記為「今天已使用」
+      // 按下瞬間立刻鎖定前端按鈕與輸入框
       const today = getTodayString();
-      setDailyCookie("device_last_checkin_date", today);
-      setDailyCookie("device_last_user", username);
-      localStorage.setItem("device_last_checkin_date", today);
-      localStorage.setItem("device_last_user", username);
-
-      // 立即將介面鎖死反灰
+      localStorage.setItem("last_click_date", today);
+      localStorage.setItem("last_click_user", username);
       lockUI();
 
       statusDiv.className = "info";
@@ -210,9 +207,9 @@
         function(position) {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
-          const deviceId = getCookie("device_fingerprint") || localStorage.getItem("device_fingerprint") || "DEV-Mobile";
+          const deviceId = getHardwareFingerprint(); // 使用硬體固定指紋
 
-          statusDiv.innerHTML = "驗證定位中...";
+          statusDiv.innerHTML = "驗證裝置與定位中...";
 
           const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}&device=${encodeURIComponent(deviceId)}`;
 
@@ -230,12 +227,12 @@
             .catch(error => {
               console.error("Fetch error:", error);
               statusDiv.className = "error";
-              statusDiv.innerHTML = "❌ 傳輸失敗，但本手機今日簽到次數已使用完畢。";
+              statusDiv.innerHTML = "❌ 傳輸失敗，但今日簽到次數已使用。";
             });
         },
         function(error) {
           statusDiv.className = "error";
-          statusDiv.innerHTML = "❌ 無法獲取定位，本手機今日簽到次數已使用完畢。";
+          statusDiv.innerHTML = "❌ 無法獲取定位，今日簽到次數已使用。";
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
