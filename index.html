@@ -109,11 +109,11 @@
     </div>
     <button id="checkInBtn" onclick="submitCheckIn()">獨立定位簽到</button>
     <div id="statusMessage"></div>
-    <div class="notice">🔒 本裝置每日僅限按壓簽到一次</div>
+    <div class="notice">🔒 雙重防護：本裝置每日僅可簽到一次</div>
   </div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxApjuQXiRoOSRfLO5LllzG6prsxqYaeUDb4g44KeLZK6RntkwCAuJXpOI-aP72h9nE/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzL0vgl08jeZzpNYn7rmhc_pGWTB0wXMpXhqjbA4sPPmIAEG5GvzOv0gWDABor8L3ZN/exec";
 
     // 取得今天日期的字串 (YYYY-MM-DD)
     function getTodayString() {
@@ -121,7 +121,7 @@
       return today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
     }
 
-    // 產生或讀取裝置指紋
+    // 取得或產生裝置指紋 (Device ID)
     function getDeviceId() {
       let devId = localStorage.getItem("device_fingerprint");
       if (!devId) {
@@ -131,8 +131,8 @@
       return devId;
     }
 
-    // 鎖定按鈕函數
-    function lockButton(msg) {
+    // 鎖定 UI 元素
+    function lockUI(msg) {
       const btn = document.getElementById("checkInBtn");
       const usernameInput = document.getElementById("username");
       const statusDiv = document.getElementById("statusMessage");
@@ -145,7 +145,7 @@
       }
     }
 
-    // 頁面載入時檢查：今天是否已經按過按鈕
+    // 網頁開啟時檢查今天是否已點擊過
     window.onload = function() {
       const lastClickDate = localStorage.getItem("last_click_date");
       const savedUser = localStorage.getItem("last_click_user");
@@ -155,13 +155,12 @@
         if (savedUser) {
           document.getElementById("username").value = savedUser;
         }
-        lockButton(`🔒 此手機今日已使用過「獨立定位簽到」，無法再次點擊。`);
+        lockUI(`🔒 此手機今日已完成「獨立定位簽到」，無法再次點擊。`);
       }
     };
 
     function submitCheckIn() {
       const usernameInput = document.getElementById("username");
-      const btn = document.getElementById("checkInBtn");
       const statusDiv = document.getElementById("statusMessage");
       const username = usernameInput.value.trim();
 
@@ -175,11 +174,11 @@
         return;
       }
 
-      // 【關鍵機制】：一按下去，立即寫入今日點擊紀錄，並反灰按鈕
+      // 按下瞬間立刻鎖定前端按鈕與輸入框
       const today = getTodayString();
       localStorage.setItem("last_click_date", today);
       localStorage.setItem("last_click_user", username);
-      lockButton();
+      lockUI();
 
       statusDiv.className = "info";
       statusDiv.innerHTML = "正在獲取 GPS 定位資訊中...";
@@ -188,9 +187,9 @@
         function(position) {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
-          const deviceId = getDeviceId();
+          const deviceId = getDeviceId(); // 帶入裝置代碼
 
-          statusDiv.innerHTML = "驗證定位中...";
+          statusDiv.innerHTML = "驗證裝置與定位中...";
 
           const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}&device=${encodeURIComponent(deviceId)}`;
 
