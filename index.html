@@ -91,6 +91,11 @@
     .info {
       color: #17a2b8;
     }
+    .notice {
+      font-size: 12px;
+      color: #8c98a4;
+      margin-top: 15px;
+    }
   </style>
 </head>
 <body>
@@ -103,13 +108,48 @@
     </div>
     <button id="checkInBtn" onclick="submitCheckIn()">獨立定位簽到</button>
     <div id="statusMessage"></div>
+    <div class="notice">🔒 每台手機每日僅可完成一次簽到</div>
   </div>
 
   <script>
-    // 已帶入最新全新的 Web App 部署網址
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzHaNADfHa3bgPae78Rjq_0oEK9kfAn0sXKHmgxRACJjNb7FwP82tFY-EvFQ-XqXmcx/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxApjuQXiRoOSRfLO5LllzG6prsxqYaeUDb4g44KeLZK6RntkwCAuJXpOI-aP72h9nE/exec";
+
+    // 取得今天日期的字串 (格式: YYYY-MM-DD)
+    function getTodayString() {
+      const today = new Date();
+      return today.toISOString().split('T')[0];
+    }
+
+    // 頁面載入時，檢查今日是否已簽到過
+    window.onload = function() {
+      checkDailyLock();
+    };
+
+    function checkDailyLock() {
+      const savedDate = localStorage.getItem("checkin_date");
+      const savedUser = localStorage.getItem("checkin_user");
+      const today = getTodayString();
+
+      // 如果紀錄的日期是「今天」，阻擋再次簽到
+      if (savedDate === today) {
+        const btn = document.getElementById("checkInBtn");
+        const statusDiv = document.getElementById("statusMessage");
+        const usernameInput = document.getElementById("username");
+
+        btn.disabled = true;
+        usernameInput.value = savedUser || "";
+        usernameInput.disabled = true;
+
+        statusDiv.className = "info";
+        statusDiv.innerHTML = `🔒 此裝置今日已完成「${savedUser}」的簽到。<br>同一台手機每日僅限簽到一次。`;
+        return true;
+      }
+      return false;
+    }
 
     function submitCheckIn() {
+      if (checkDailyLock()) return;
+
       const usernameInput = document.getElementById("username");
       const btn = document.getElementById("checkInBtn");
       const statusDiv = document.getElementById("statusMessage");
@@ -141,17 +181,23 @@
           fetch(requestUrl)
             .then(response => response.json())
             .then(data => {
-              btn.disabled = false;
               if (data.status === "success") {
                 if (data.isSuccess) {
+                  // 簽到成功：寫入今日日期與姓名至瀏覽器 localStorage
+                  localStorage.setItem("checkin_date", getTodayString());
+                  localStorage.setItem("checkin_user", username);
+
                   statusDiv.className = "success";
                   statusDiv.innerHTML = `✅ ${data.message} (距離標的物約 ${data.distance} 公尺)`;
-                  usernameInput.value = "";
+                  usernameInput.disabled = true;
+                  btn.disabled = true;
                 } else {
+                  btn.disabled = false;
                   statusDiv.className = "error";
                   statusDiv.innerHTML = `❌ ${data.message}`;
                 }
               } else {
+                btn.disabled = false;
                 statusDiv.className = "error";
                 statusDiv.innerHTML = `❌ 簽到失敗：${data.message}`;
               }
