@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>即時定位簽到系統</title>
+  <!-- 引入 LINE LIFF SDK -->
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -109,11 +111,14 @@
     </div>
     <button id="checkInBtn" onclick="submitCheckIn()">獨立定位簽到</button>
     <div id="statusMessage"></div>
-    <div class="notice">🔒 雙重防護：同一網路/手機每日僅能簽到一次</div>
+    <div class="notice">🔒 雙重防護：單一帳號/裝置每日僅能簽到一次</div>
   </div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzcwB2aGzcoueMr6Qxt72G7juOL0ipyK4A73kdcKGh5nMIvZ9AL1pL7LRciR_k0xOvz/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyNu92WPMu5uHqJwmQ56lVZ3TB2NRBuhzuI-YSSoigUZ3uRu8omoud7udTxk2kPZNuK/exec";
+    const MY_LIFF_ID = "2006789012-ABC12345"; // 若您有 LINE Developers LIFF ID 可填入，沒有亦可直接運作
+
+    let lineUserId = "";
 
     function getTodayString() {
       const today = new Date();
@@ -133,7 +138,8 @@
       }
     }
 
-    window.onload = function() {
+    // 初始化 LINE LIFF
+    window.onload = async function() {
       const lastClickDate = localStorage.getItem("last_click_date");
       const savedUser = localStorage.getItem("last_click_user");
       const today = getTodayString();
@@ -142,19 +148,33 @@
         if (savedUser) {
           document.getElementById("username").value = savedUser;
         }
-        lockUI(`🔒 本手機今日已完成簽到，按鈕已鎖定。`);
+        lockUI(`🔒 本裝置今日已完成簽到，按鈕已鎖定。`);
+      }
+
+      // 嘗試初始化 LIFF 取得 LINE ID
+      try {
+        if (typeof liff !== 'undefined' && MY_LIFF_ID && !MY_LIFF_ID.includes("ABC12345")) {
+          await liff.init({ liffId: MY_LIFF_ID });
+          if (liff.isLoggedIn()) {
+            const profile = await liff.getProfile();
+            lineUserId = profile.userId;
+          }
+        }
+      } catch (err) {
+        console.log("LIFF Init Pass");
       }
     };
 
-    // 取得手機目前的真實對外 IP 位址
-    async function getUserIP() {
-      try {
-        const res = await fetch('https://api.ipify.org?format=json');
-        const data = await res.json();
-        return data.ip;
-      } catch (e) {
-        return 'IP-' + Math.random().toString(36).substring(2, 8);
+    // 取得 iPhone 裝置的輔助固定標籤
+    function getDeviceIdentifier() {
+      if (lineUserId) return lineUserId;
+
+      let devId = localStorage.getItem("iphone_persistent_id");
+      if (!devId) {
+        devId = 'IOS-' + Math.random().toString(36).substring(2, 10) + '-' + Date.now().toString(36);
+        localStorage.setItem("iphone_persistent_id", devId);
       }
+      return devId;
     }
 
     async function submitCheckIn() {
@@ -172,55 +192,48 @@
         return;
       }
 
-      // 點擊後先記錄在本地（提供即時 UI 鎖定）
       const today = getTodayString();
       localStorage.setItem("last_click_date", today);
       localStorage.setItem("last_click_user", username);
       lockUI();
 
       statusDiv.className = "info";
-      statusDiv.innerHTML = "正在驗證網路 IP 與獲取 GPS 定位資訊中...";
+      statusDiv.innerHTML = "正在驗證裝置與獲取 GPS 定位中...";
 
-      try {
-        // 抓取 IP 位址
-        const clientIp = await getUserIP();
+      const userId = getDeviceIdentifier();
 
-        navigator.geolocation.getCurrentPosition(
-          function(position) {
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
+      navigator.geolocation.getCurrentPosition(
+        function(position) {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
 
-            statusDiv.innerHTML = "傳送簽到資料中...";
+          statusDiv.innerHTML = "傳送簽到資料中...";
 
-            const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}&ip=${encodeURIComponent(clientIp)}`;
+          const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}&userId=${encodeURIComponent(userId)}`;
 
-            fetch(requestUrl)
-              .then(response => response.json())
-              .then(data => {
-                if (data.status === "success" && data.isSuccess) {
-                  statusDiv.className = "success";
-                  statusDiv.innerHTML = `✅ ${data.message} (距離標的物約 ${data.distance} 公尺)`;
-                } else {
-                  statusDiv.className = "error";
-                  statusDiv.innerHTML = `❌ ${data.message || '簽到失敗'}`;
-                }
-              })
-              .catch(error => {
-                console.error("Fetch error:", error);
+          fetch(requestUrl)
+            .then(response => response.json())
+            .then(data => {
+              if (data.status === "success" && data.isSuccess) {
+                statusDiv.className = "success";
+                statusDiv.innerHTML = `✅ ${data.message} (距離標的物約 ${data.distance} 公尺)`;
+              } else {
                 statusDiv.className = "error";
-                statusDiv.innerHTML = "❌ 傳輸失敗，但今日簽到次數已使用。";
-              });
-          },
-          function(error) {
-            statusDiv.className = "error";
-            statusDiv.innerHTML = "❌ 無法獲取定位，今日簽到次數已使用。";
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-      } catch (err) {
-        statusDiv.className = "error";
-        statusDiv.innerHTML = "❌ 網路驗證錯誤，請重試。";
-      }
+                statusDiv.innerHTML = `❌ ${data.message || '簽到失敗'}`;
+              }
+            })
+            .catch(error => {
+              console.error("Fetch error:", error);
+              statusDiv.className = "error";
+              statusDiv.innerHTML = "❌ 傳輸失敗，但今日簽到次數已使用。";
+            });
+        },
+        function(error) {
+          statusDiv.className = "error";
+          statusDiv.innerHTML = "❌ 無法獲取定位，今日簽到次數已使用。";
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
     }
   </script>
 </body>
