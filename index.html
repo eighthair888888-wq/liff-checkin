@@ -121,14 +121,34 @@
       return today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
     }
 
-    // 取得或產生裝置指紋 (Device ID)
-    function getDeviceId() {
-      let devId = localStorage.getItem("device_fingerprint");
-      if (!devId) {
-        devId = 'DEV-' + Math.random().toString(36).substring(2, 10) + '-' + new Date().getTime().toString(36);
-        localStorage.setItem("device_fingerprint", devId);
+    // 產生基於手機硬體特徵的「固定裝置碼」（不隨時間改變）
+    function getHardwareFingerprint() {
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      let renderer = "unknown";
+      if (gl) {
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        if (debugInfo) {
+          renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+        }
       }
-      return devId;
+      
+      const str = [
+        navigator.userAgent,
+        screen.height,
+        screen.width,
+        screen.colorDepth,
+        renderer
+      ].join('||');
+
+      // 簡單的哈希演算法轉成固定 ID
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash |= 0;
+      }
+      return 'DEV-' + Math.abs(hash).toString(36);
     }
 
     // 鎖定 UI 元素
@@ -187,7 +207,7 @@
         function(position) {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
-          const deviceId = getDeviceId(); // 帶入裝置代碼
+          const deviceId = getHardwareFingerprint(); // 使用硬體固定指紋
 
           statusDiv.innerHTML = "驗證裝置與定位中...";
 
