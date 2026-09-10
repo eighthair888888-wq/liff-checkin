@@ -81,16 +81,6 @@
       font-size: 14px;
       line-height: 1.5;
     }
-    .debug-info {
-      margin-top: 10px;
-      padding: 10px;
-      background: #f8f9fa;
-      border-radius: 6px;
-      font-size: 12px;
-      color: #6c757d;
-      text-align: left;
-      word-break: break-all;
-    }
     .success {
       color: #28a745;
       font-weight: bold;
@@ -119,12 +109,11 @@
     </div>
     <button id="checkInBtn" onclick="submitCheckIn()">獨立定位報到</button>
     <div id="statusMessage"></div>
-    <div id="debugBox" class="debug-info" style="display:none;"></div>
-    <div class="notice">🔒 雙重防護：本裝置每日僅可報到一次 (限距離 20 公尺內)</div>
+    <div class="notice">🔒 重要提醒：每日僅可報到一次 (請連接WIFI)</div>
   </div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzWzzcqDBQYPjUzmbWtLaNZHv9l_HGUlPW8maaVSC1vVhAhIxUeuRlFJb8sPjHqJQTU/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyW6wO2-hUAt9d2Ln9mum5lRE7-geXUFJE4WliOea4YK6NcDC-Hf9R7m5Q9LqU7UaQ/exec";
 
     function getTodayString() {
       const today = new Date();
@@ -181,14 +170,13 @@
         if (savedUser) {
           document.getElementById("username").value = savedUser;
         }
-        lockUI(`🔒 此手機今日已完成報到，無法再次點擊。`);
+        lockUI(`🔒 此手機今日已完成「獨立定位簽到」，無法再次點擊。`);
       }
     };
 
     function submitCheckIn() {
       const usernameInput = document.getElementById("username");
       const statusDiv = document.getElementById("statusMessage");
-      const debugBox = document.getElementById("debugBox");
       const username = usernameInput.value.trim();
 
       if (!username) {
@@ -207,26 +195,27 @@
       lockUI();
 
       statusDiv.className = "info";
-      statusDiv.innerHTML = "📡 正在進行多重 GPS 精密對焦 (請保持手機靜止 5 秒)...";
+      statusDiv.innerHTML = "📡 正在進行 GPS 精密校正中 (請保持手機靜止)...";
 
       let bestPosition = null;
       let watchId = null;
 
+      // 使用 watchPosition 進行 5 秒動態追蹤與精度篩選
       watchId = navigator.geolocation.watchPosition(
         function(position) {
-          // 保留 accuracy 數值最小（最精準）的資料
+          // 自動留下精確度最高 (accuracy 數值越小越精準) 的定位資料
           if (!bestPosition || position.coords.accuracy < bestPosition.coords.accuracy) {
             bestPosition = position;
-            statusDiv.innerHTML = `📡 正在精準對焦... (GPS 誤差: ${Math.round(position.coords.accuracy)} 公尺)`;
+            statusDiv.innerHTML = `📡 正在進行 GPS 精密校正 (當前誤差: ${Math.round(position.coords.accuracy)} 公尺)...`;
           }
         },
         function(error) {
-          console.warn("GPS 擷取提醒:", error);
+          console.warn("GPS 獲取微幅警告:", error);
         },
-        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
 
-      // 預熱對焦 5.5 秒後送出
+      // 預熱 4 秒後，關閉監聽並送出精準資料
       setTimeout(() => {
         if (watchId !== null) {
           navigator.geolocation.clearWatch(watchId);
@@ -235,37 +224,33 @@
         if (bestPosition) {
           const lat = bestPosition.coords.latitude;
           const lng = bestPosition.coords.longitude;
-          const accuracy = Math.round(bestPosition.coords.accuracy);
           const deviceId = getHardwareFingerprint();
 
-          statusDiv.innerHTML = "驗證定位資料中...";
+          statusDiv.innerHTML = "驗證裝置與寫入資料中...";
 
           const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}&device=${encodeURIComponent(deviceId)}`;
 
           fetch(requestUrl)
             .then(response => response.json())
             .then(data => {
-              debugBox.style.display = "block";
-              debugBox.innerHTML = `📌 實測定位：${lat.toFixed(6)}, ${lng.toFixed(6)}<br>衛星精確度誤差：±${accuracy} 公尺`;
-
               if (data.status === "success" && data.isSuccess) {
                 statusDiv.className = "success";
                 statusDiv.innerHTML = `✅ ${data.message} (距離標的物約 ${data.distance} 公尺)`;
               } else {
                 statusDiv.className = "error";
-                statusDiv.innerHTML = `❌ ${data.message || '報到失敗'}`;
+                statusDiv.innerHTML = `❌ ${data.message || '簽到失敗'}`;
               }
             })
             .catch(error => {
               console.error("Fetch error:", error);
               statusDiv.className = "error";
-              statusDiv.innerHTML = "❌ 傳輸失敗，但今日報到次數已使用。";
+              statusDiv.innerHTML = "❌ 傳輸失敗，但今日簽到次數已使用。";
             });
         } else {
           statusDiv.className = "error";
-          statusDiv.innerHTML = "❌ 無法獲取定位，請確認 Safari 是否已開啟「精確位置」權限。";
+          statusDiv.innerHTML = "❌ 無法獲取高精度定位，請確認手機已開啟「精確位置」權限並遠離室內遮蔽物。";
         }
-      }, 5500);
+      }, 4000);
     }
   </script>
 </body>
