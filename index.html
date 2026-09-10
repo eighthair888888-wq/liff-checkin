@@ -109,11 +109,11 @@
     </div>
     <button id="checkInBtn" onclick="submitCheckIn()">獨立定位簽到</button>
     <div id="statusMessage"></div>
-    <div class="notice">🔒 雙重防護：本裝置每日僅可簽到一次 (限距離 100 公尺內)</div>
+    <div class="notice">🔒 重要提醒：本裝置每日僅可簽到一次 (請連接WIFI報到)</div>
   </div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxMpB8rLVHb20botrYk5on3ybRpC9HW6ZGN2ES7Is2UbW4q2-XkrnSdsF4SFSDynfpS/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw9fFFRLtAa7yinI5mqXIEDosMAk8of9gpwpVGYI8MJl6ezXMxWy5EzQqD3izt_09mR/exec";
 
     // 取得今天日期的字串 (YYYY-MM-DD)
     function getTodayString() {
@@ -141,7 +141,6 @@
         renderer
       ].join('||');
 
-      // 簡單的哈希演算法轉成固定 ID
       let hash = 0;
       for (let i = 0; i < str.length; i++) {
         const char = str.charCodeAt(i);
@@ -201,13 +200,13 @@
       lockUI();
 
       statusDiv.className = "info";
-      statusDiv.innerHTML = "正在獲取 GPS 定位資訊中...";
+      statusDiv.innerHTML = "正在獲取高精度 GPS 定位中，請稍候...";
 
       navigator.geolocation.getCurrentPosition(
         function(position) {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
-          const deviceId = getHardwareFingerprint(); // 使用硬體固定指紋
+          const deviceId = getHardwareFingerprint();
 
           statusDiv.innerHTML = "驗證裝置與定位中...";
 
@@ -232,9 +231,9 @@
         },
         function(error) {
           statusDiv.className = "error";
-          statusDiv.innerHTML = "❌ 無法獲取定位，今日簽到次數已使用。";
+          statusDiv.innerHTML = "❌ 無法獲取定位，請確認已給予瀏覽器「精確位置」存取權限。";
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
     }
   </script>
