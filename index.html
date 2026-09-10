@@ -102,26 +102,24 @@
 <body>
 
   <div class="card">
-    <h2>📍 快速簽到系統</h2>
+    <h2>📍 快速報到系統</h2>
     <div class="form-group">
       <label for="username">請輸入您的姓名</label>
       <input type="text" id="username" placeholder="例：8號髮粧" required>
     </div>
-    <button id="checkInBtn" onclick="submitCheckIn()">獨立定位簽到</button>
+    <button id="checkInBtn" onclick="submitCheckIn()">獨立定位報到</button>
     <div id="statusMessage"></div>
-    <div class="notice">🔒 重要提醒：每日僅可簽到一次 (請連接WIFI報到)</div>
+    <div class="notice">🔒 重要提醒：每日僅可報到一次 (請連接EIFI)</div>
   </div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw9fFFRLtAa7yinI5mqXIEDosMAk8of9gpwpVGYI8MJl6ezXMxWy5EzQqD3izt_09mR/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbymJ0A9cbqBw2hH89HGc1GhB110lCgU8A-TLLmNSkB9NGnHy_FlSPa001-JzMFCgi5m/exec";
 
-    // 取得今天日期的字串 (YYYY-MM-DD)
     function getTodayString() {
       const today = new Date();
       return today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
     }
 
-    // 產生基於手機硬體特徵的「固定裝置碼」（不隨時間改變）
     function getHardwareFingerprint() {
       const canvas = document.createElement('canvas');
       const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
@@ -150,7 +148,6 @@
       return 'DEV-' + Math.abs(hash).toString(36);
     }
 
-    // 鎖定 UI 元素
     function lockUI(msg) {
       const btn = document.getElementById("checkInBtn");
       const usernameInput = document.getElementById("username");
@@ -164,7 +161,6 @@
       }
     }
 
-    // 網頁開啟時檢查今天是否已點擊過
     window.onload = function() {
       const lastClickDate = localStorage.getItem("last_click_date");
       const savedUser = localStorage.getItem("last_click_user");
@@ -193,22 +189,44 @@
         return;
       }
 
-      // 按下瞬間立刻鎖定前端按鈕與輸入框
       const today = getTodayString();
       localStorage.setItem("last_click_date", today);
       localStorage.setItem("last_click_user", username);
       lockUI();
 
       statusDiv.className = "info";
-      statusDiv.innerHTML = "正在獲取高精度 GPS 定位中，請稍候...";
+      statusDiv.innerHTML = "📡 正在進行 GPS 精密校正中 (請保持手機靜止)...";
 
-      navigator.geolocation.getCurrentPosition(
+      let bestPosition = null;
+      let watchId = null;
+
+      // 使用 watchPosition 進行 5 秒動態追蹤與精度篩選
+      watchId = navigator.geolocation.watchPosition(
         function(position) {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
+          // 自動留下精確度最高 (accuracy 數值越小越精準) 的定位資料
+          if (!bestPosition || position.coords.accuracy < bestPosition.coords.accuracy) {
+            bestPosition = position;
+            statusDiv.innerHTML = `📡 正在進行 GPS 精密校正 (當前誤差: ${Math.round(position.coords.accuracy)} 公尺)...`;
+          }
+        },
+        function(error) {
+          console.warn("GPS 獲取微幅警告:", error);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+
+      // 預熱 4 秒後，關閉監聽並送出精準資料
+      setTimeout(() => {
+        if (watchId !== null) {
+          navigator.geolocation.clearWatch(watchId);
+        }
+
+        if (bestPosition) {
+          const lat = bestPosition.coords.latitude;
+          const lng = bestPosition.coords.longitude;
           const deviceId = getHardwareFingerprint();
 
-          statusDiv.innerHTML = "驗證裝置與定位中...";
+          statusDiv.innerHTML = "驗證裝置與寫入資料中...";
 
           const requestUrl = `${WEB_APP_URL}?username=${encodeURIComponent(username)}&lat=${lat}&lng=${lng}&device=${encodeURIComponent(deviceId)}`;
 
@@ -228,13 +246,11 @@
               statusDiv.className = "error";
               statusDiv.innerHTML = "❌ 傳輸失敗，但今日簽到次數已使用。";
             });
-        },
-        function(error) {
+        } else {
           statusDiv.className = "error";
-          statusDiv.innerHTML = "❌ 無法獲取定位，請確認已給予瀏覽器「精確位置」存取權限。";
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-      );
+          statusDiv.innerHTML = "❌ 無法獲取高精度定位，請確認手機已開啟「精確位置」權限並遠離室內遮蔽物。";
+        }
+      }, 4000);
     }
   </script>
 </body>
